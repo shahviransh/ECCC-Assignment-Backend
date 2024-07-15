@@ -5,7 +5,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-DATABASE = 'scenario.db3'
+DATABASE = 'scenario_2.db3'
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
@@ -16,7 +16,7 @@ def get_db():
 def get_ids():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT DISTINCT ID FROM T_RECH_Result')
+    cursor.execute('SELECT DISTINCT ID FROM T_RECH_Results')
     rows = cursor.fetchall()
     ids = [row['ID'] for row in rows]
     conn.close()
@@ -27,7 +27,7 @@ def get_data():
     id = request.args.get('id')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT Time, Q_m3 FROM T_RECH_Result WHERE ID = ?', (id,))
+    cursor.execute('SELECT Time, Q_m3 FROM T_RECH_Results WHERE ID = ?', (id,))
     rows = cursor.fetchall()
     time_series = [row['Time'] for row in rows]
     runoff_series = [row['Q_m3'] for row in rows]
