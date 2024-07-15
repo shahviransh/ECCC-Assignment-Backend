@@ -5,7 +5,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-DATABASE = 'scenario_2.db3'
+DATABASE = './scenario_2.db3'
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
