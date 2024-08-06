@@ -1,6 +1,7 @@
 # Import necessary modules from Flask and SQLite3
 from flask import Flask, jsonify, request
 import sqlite3
+import pandas as pd
 from flask_cors import CORS
 
 # Create an instance of the Flask class
@@ -61,6 +62,16 @@ def get_data():
     conn.close()
     # Return the time series and runoff series as a JSON response
     return jsonify({"time": time_series, "runoff": runoff_series})
+
+
+# Define a route for the '/df' endpoint with GET method
+@app.route("/df", methods=["GET"])
+def get_geometry():
+    conn = get_db()
+    query = "SELECT ID, Time, Q_m3 FROM T_RECH_Results"
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
 
 
 # Main entry point of the script
