@@ -2,7 +2,9 @@
 from flask import Flask, jsonify, request
 import sqlite3
 import pandas as pd
+import shapefile
 from flask_cors import CORS
+import dbf
 
 # Create an instance of the Flask class
 app = Flask(__name__)
@@ -64,19 +66,41 @@ def get_data():
     return jsonify({"time": time_series, "runoff": runoff_series})
 
 
-# Define a route for the '/df' endpoint with GET method
-@app.route("/df", methods=["GET"])
-def get_geometry():
-    # Get a database connection
+# Function to create or update a DBF file for an existing shapefile
+def create_dbf(df, dbf_file_path):
+    # Define the fields for the .dbf file
+    fields = ""
+    for col in df.columns:
+        dtype = df[col].dtype
+        if pd.api.types.is_integer_dtype(dtype):
+            fields += col + f" N({10},{0}); "  # Numeric type with no decimal places
+        elif pd.api.types.is_float_dtype(dtype):
+            fields += col + f" N({15},{5})"  # Numeric type with 5 decimal places
+        else:
+            fields += col + f" C({10}); "  # Character type with length 10
+
+    # Create the .dbf file and add records
+    table = dbf.Table(dbf_file_path, fields)
+    table.open(dbf.READ_WRITE)
+    for _, row in df.iterrows():
+        # Convert each row to a tuple, handle NaN values
+        row_tuple = tuple(str(value) if pd.notna(value) else "" for value in row)
+        table.append(row_tuple)
+
+    print(f"Data successfully written to {dbf_file_path}")
+
+
+# Define a route to generate and save the DBF file
+@app.route("/create_dbf", methods=["GET"])
+def create_dbf_file():
     conn = get_db()
-    # Define the query to select data from the database
     query = "SELECT ID, Time, Q_m3 FROM T_RECH_Results"
-    # Read the query result into a Pandas DataFrame
     df = pd.read_sql_query(query, conn)
-    # Close the database connection
     conn.close()
-    # Return the DataFrame data as a JSON response
-    return jsonify(df.to_dict(orient="records"))
+
+    # Create the DBF file
+    create_dbf(df, "./spatial_data/basin.dbf")
+    return jsonify({"message": "DBF file created successfully"})
 
 
 # Main entry point of the script
