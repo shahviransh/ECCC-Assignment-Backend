@@ -67,11 +67,18 @@ def get_data():
 # Define a route for the '/df' endpoint with GET method
 @app.route("/df", methods=["GET"])
 def get_geometry():
+    # Get a database connection
     conn = get_db()
+    # Define the query to select data from the database
     query = "SELECT ID, Time, Q_m3 FROM T_RECH_Results"
+    # Read the query result into a Pandas DataFrame
     df = pd.read_sql_query(query, conn)
+    # Close the database connection
     conn.close()
-    return df
+    # Convert the DataFrame to a dictionary with the 'records' orientation for JSON serialization
+    data = df.to_dict(orient='records')
+    # Return the DataFrame data as a JSON response
+    return jsonify(data)
 
 
 # Main entry point of the script
