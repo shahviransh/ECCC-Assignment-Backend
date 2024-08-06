@@ -76,7 +76,7 @@ def get_geometry():
     # Close the database connection
     conn.close()
     # Return the DataFrame data as a JSON response
-    return df.to_json(orient='records')
+    return jsonify(df.to_dict(orient="records"))
 
 
 # Main entry point of the script
