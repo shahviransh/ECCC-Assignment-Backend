@@ -75,10 +75,8 @@ def get_geometry():
     df = pd.read_sql_query(query, conn)
     # Close the database connection
     conn.close()
-    # Convert the DataFrame to a dictionary with the 'records' orientation for JSON serialization
-    data = df.to_dict(orient='records')
     # Return the DataFrame data as a JSON response
-    return jsonify(data)
+    return df.to_json(orient='records')
 
 
 # Main entry point of the script
