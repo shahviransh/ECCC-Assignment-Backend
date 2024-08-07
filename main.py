@@ -4,7 +4,15 @@ import sqlite3
 import pandas as pd
 import shapefile
 from flask_cors import CORS
+import h5py
+import numpy as np
+import rasterio
+from rasterio.features import shapes
+from shapely.geometry import shape as sh
+import geopandas as gpd
 import dbf
+from geo.Geoserver import Geoserver
+import shutil
 
 # Create an instance of the Flask class
 app = Flask(__name__)
@@ -66,41 +74,98 @@ def get_data():
     return jsonify({"time": time_series, "runoff": runoff_series})
 
 
-# Function to create or update a DBF file for an existing shapefile
-def create_dbf(df, dbf_file_path):
-    # Define the fields for the .dbf file
-    fields = ""
-    for col in df.columns:
-        dtype = df[col].dtype
-        if pd.api.types.is_integer_dtype(dtype):
-            fields += col + f" N({10},{0}); "  # Numeric type with no decimal places
-        elif pd.api.types.is_float_dtype(dtype):
-            fields += col + f" N({15},{5})"  # Numeric type with 5 decimal places
-        else:
-            fields += col + f" C({10}); "  # Character type with length 10
-
-    # Create the .dbf file and add records
-    table = dbf.Table(dbf_file_path, fields)
-    table.open(dbf.READ_WRITE)
-    for _, row in df.iterrows():
-        # Convert each row to a tuple, handle NaN values
-        row_tuple = tuple(str(value) if pd.notna(value) else "" for value in row)
-        table.append(row_tuple)
-
-    print(f"Data successfully written to {dbf_file_path}")
+def preprocess_raster_data(dataset, nrows, ncols):
+    if len(dataset.shape) == 1:
+        dataset = dataset.reshape(int(nrows), int(ncols))
+    elif len(dataset.shape) == 2:
+        pass  # Already 2D
+    else:
+        raise ValueError("Raster data must be 2D or 3D")
+    return dataset
 
 
-# Define a route to generate and save the DBF file
-@app.route("/create_dbf", methods=["GET"])
-def create_dbf_file():
-    conn = get_db()
+def raster_to_vector(raster):
+    mask = raster != -32768  # Assuming NODATA_VALUE is -32768
+    shapes_generator = shapes(raster, mask=mask)
+    geoms = [(sh(geom), value) for geom, value in shapes_generator]
+    geoms = pd.DataFrame(geoms, columns=["geometry", "River_ID"])
+    return geoms
+
+
+def read_river_network(file_path, dataset_name):
+    with h5py.File(file_path, "r") as hdf_file:
+        asc = hdf_file["asc"]
+        dataset = np.array(asc[dataset_name], np.float32)
+        attributes = asc.attrs
+        ncols = 30
+        nrows = 7591
+        xllcorner = attributes["XLLCENTER"]
+        yllcorner = attributes["YLLCENTER"]
+        cellsize = attributes["DX"]
+        NODATA_value = attributes["NODATA_VALUE"]
+        # Reshape the dataset to 2D
+        dataset = preprocess_raster_data(dataset, nrows, ncols)
+    return dataset
+
+
+# Function to fetch runoff data from SQLite database
+def fetch_runoff_data(db_path):
+    conn = sqlite3.connect(db_path)
     query = "SELECT ID, Time, Q_m3 FROM T_RECH_Results"
     df = pd.read_sql_query(query, conn)
     conn.close()
+    return df
 
-    # Create the DBF file
-    create_dbf(df, "./spatial_data/basin.dbf")
-    return jsonify({"message": "DBF file created successfully"})
+
+# Function to add runoff data to vector data
+def add_runoff_to_vector(vector_data, runoff_data):
+    merged = runoff_data.merge(
+        vector_data, left_on="ID", right_on="River_ID", how="left"
+    )
+    return merged
+
+
+# Function to publish the vector data to GeoServer
+def publish_vector_data(
+    geoserver_url, workspace, layer_name, vector_data, username, password
+):
+    geo = Geoserver(geoserver_url, "admin", "geoserver")
+
+    shapefile_path = "./spatial_data/river_network.shp"
+    gpd.GeoDataFrame(vector_data, crs="EPSG:4326").to_file(shapefile_path)
+
+    zip_path = "./spatial_data"
+    shutil.make_archive(zip_path, "zip", zip_path)
+
+    geo.create_shp_datastore(path=zip_path + ".zip", workspace=workspace, store_name=layer_name)
+
+    return jsonify({"message": "Vector data & TIF file published successfully."})
+
+# Define a route to vectorize the river network raster data, merge it with runoff data, and publish it to GeoServer
+@app.route("/publish_river_network", methods=["GET"])
+def publish_river_network():
+    hdf5_path = "./task3/parameter.h5"
+    dataset_name = "reach"
+    db_path = "./scenario_2.db3"
+    geoserver_url = "http://localhost:9090/geoserver"
+    workspace = "ECCCGeoServer"
+    layer_name = "river_network"
+    username = "admin"
+    password = "geoserver"
+
+    river_network = read_river_network(hdf5_path, dataset_name)
+    vector_data = raster_to_vector(river_network)
+    runoff_data = fetch_runoff_data(db_path)
+    vector_with_runoff = add_runoff_to_vector(vector_data, runoff_data)
+
+    return publish_vector_data(
+        geoserver_url,
+        workspace,
+        layer_name,
+        vector_with_runoff,
+        username,
+        password,
+    )
 
 
 # Main entry point of the script
