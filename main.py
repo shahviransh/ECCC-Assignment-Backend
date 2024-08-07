@@ -122,6 +122,9 @@ def add_runoff_to_vector(vector_data, runoff_data):
     merged = runoff_data.merge(
         vector_data, left_on="ID", right_on="River_ID", how="left"
     )
+    merged.drop(columns=["River_ID"], axis=1, inplace=True)
+    merged.set_index("ID", inplace=True)
+
     return merged
 
 
