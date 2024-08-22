@@ -6,6 +6,7 @@ import shapefile
 from flask_cors import CORS
 import h5py
 import numpy as np
+
 # import rasterio
 # from rasterio.features import shapes
 # from shapely.geometry import shape as sh
@@ -122,7 +123,9 @@ def fetch_runoff_data(db_path):
 # Function to add runoff data to vector data
 def add_runoff_to_vector(vector_data, runoff_data):
     # Merge the DataFrames on the specified columns with a left join
-    merged_data = pd.merge(vector_data, runoff_data, how="left", left_on="Id", right_on="ID")
+    merged_data = pd.merge(
+        vector_data, runoff_data, how="left", left_on="Id", right_on="ID"
+    )
 
     # Drop the redundant columns (ID) from the merged data
     merged_data.drop(columns=["ID"], inplace=True)
@@ -138,14 +141,23 @@ def add_runoff_to_vector(vector_data, runoff_data):
 def publish_vector_data(
     geoserver_url, workspace, layer_name, vector_data, username, password
 ):
-    geo = Geoserver(geoserver_url, "admin", "geoserver")
+    username = "admin"
+    password = "geoserver"
+
+    geo = Geoserver(geoserver_url, username, password)
+
+    style_name = "transparent basin"
 
     zip_path = "./upload"
     shutil.make_archive(zip_path, "zip", zip_path)
 
     geo.create_shp_datastore(
-        path=zip_path + ".zip", workspace=workspace, store_name=layer_name
+        path=zip_path + ".zip",
+        workspace=workspace,
+        store_name=layer_name
     )
+
+    geo.publish_style(layer_name=layer_name, style_name=style_name, workspace=workspace)
 
     return jsonify({"message": "Vector data published successfully."})
 
@@ -166,7 +178,6 @@ def publish_subbasin():
     gdf_pd = pd.DataFrame(gdf)
     runoff_data = fetch_runoff_data(db_path)
     vector_with_runoff = add_runoff_to_vector(gdf_pd, runoff_data)
-    print(vector_with_runoff)
 
     # Remove existing shapefile if it exists
     if os.path.exists(shapefile_path):
