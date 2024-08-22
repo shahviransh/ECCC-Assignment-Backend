@@ -13,6 +13,8 @@ import geopandas as gpd
 import dbf
 from geo.Geoserver import Geoserver
 import shutil
+from dbfread import DBF
+import os
 
 # Create an instance of the Flask class
 app = Flask(__name__)
@@ -74,38 +76,38 @@ def get_data():
     return jsonify({"time": time_series, "runoff": runoff_series})
 
 
-def preprocess_raster_data(dataset, nrows, ncols):
-    if len(dataset.shape) == 1:
-        dataset = dataset.reshape(int(nrows), int(ncols))
-    elif len(dataset.shape) == 2:
-        pass  # Already 2D
-    else:
-        raise ValueError("Raster data must be 2D or 3D")
-    return dataset
+# def preprocess_raster_data(dataset, nrows, ncols):
+#     if len(dataset.shape) == 1:
+#         dataset = dataset.reshape(int(nrows), int(ncols))
+#     elif len(dataset.shape) == 2:
+#         pass  # Already 2D
+#     else:
+#         raise ValueError("Raster data must be 2D or 3D")
+#     return dataset
 
 
-def raster_to_vector(raster):
-    mask = raster != -32768  # Assuming NODATA_VALUE is -32768
-    shapes_generator = shapes(raster, mask=mask)
-    geoms = [(sh(geom), value) for geom, value in shapes_generator]
-    geoms = pd.DataFrame(geoms, columns=["geometry", "River_ID"])
-    return geoms
+# def raster_to_vector(raster):
+#     mask = raster != -32768  # Assuming NODATA_VALUE is -32768
+#     shapes_generator = shapes(raster, mask=mask)
+#     geoms = [(sh(geom), value) for geom, value in shapes_generator]
+#     geoms = pd.DataFrame(geoms, columns=["geometry", "River_ID"])
+#     return geoms
 
 
-def read_river_network(file_path, dataset_name):
-    with h5py.File(file_path, "r") as hdf_file:
-        asc = hdf_file["asc"]
-        dataset = np.array(asc[dataset_name], np.float32)
-        attributes = asc.attrs
-        ncols = 30
-        nrows = 7591
-        xllcorner = attributes["XLLCENTER"]
-        yllcorner = attributes["YLLCENTER"]
-        cellsize = attributes["DX"]
-        NODATA_value = attributes["NODATA_VALUE"]
-        # Reshape the dataset to 2D
-        dataset = preprocess_raster_data(dataset, nrows, ncols)
-    return dataset
+# def read_subbasin(file_path, dataset_name):
+#     with h5py.File(file_path, "r") as hdf_file:
+#         asc = hdf_file["asc"]
+#         dataset = np.array(asc[dataset_name], np.float32)
+#         attributes = asc.attrs
+#         ncols = 30
+#         nrows = 7591
+#         xllcorner = attributes["XLLCENTER"]
+#         yllcorner = attributes["YLLCENTER"]
+#         cellsize = attributes["DX"]
+#         NODATA_value = attributes["NODATA_VALUE"]
+#         # Reshape the dataset to 2D
+#         dataset = preprocess_raster_data(dataset, nrows, ncols)
+#     return dataset
 
 
 # Function to fetch runoff data from SQLite database
@@ -119,13 +121,18 @@ def fetch_runoff_data(db_path):
 
 # Function to add runoff data to vector data
 def add_runoff_to_vector(vector_data, runoff_data):
-    merged = runoff_data.merge(
-        vector_data, left_on="ID", right_on="River_ID", how="left"
-    )
-    merged.drop(columns=["River_ID"], axis=1, inplace=True)
-    merged.set_index("ID", inplace=True)
+    # Merge the DataFrames on the specified columns with a left join
+    merged_data = pd.merge(vector_data, runoff_data, how="inner", left_on="Id", right_on="ID")
+    merged_data = pd.merge(vector_data, merged_data, how="outer")
 
-    return merged
+    # Drop the redundant columns (ID) from the merged data
+    merged_data.drop(columns=["ID"], inplace=True)
+
+    # Convert the merged DataFrame back to a GeoDataFrame
+    merged_gdf = gpd.GeoDataFrame(merged_data)
+    merged_gdf.crs = "EPSG:4326"
+
+    return merged_gdf
 
 
 # Function to publish the vector data to GeoServer
@@ -134,32 +141,45 @@ def publish_vector_data(
 ):
     geo = Geoserver(geoserver_url, "admin", "geoserver")
 
-    shapefile_path = "./spatial_data/river_network.shp"
-    gpd.GeoDataFrame(vector_data, crs="EPSG:4326").to_file(shapefile_path)
-
-    zip_path = "./spatial_data"
+    zip_path = "./upload"
     shutil.make_archive(zip_path, "zip", zip_path)
 
-    geo.create_shp_datastore(path=zip_path + ".zip", workspace=workspace, store_name=layer_name)
+    geo.create_shp_datastore(
+        path=zip_path + ".zip", workspace=workspace, store_name=layer_name
+    )
 
-    return jsonify({"message": "Vector data & TIF file published successfully."})
+    return jsonify({"message": "Vector data published successfully."})
 
-# Define a route to vectorize the river network raster data, merge it with runoff data, and publish it to GeoServer
-@app.route("/publish_river_network", methods=["GET"])
-def publish_river_network():
-    hdf5_path = "./task3/parameter.h5"
-    dataset_name = "reach"
+
+# Define a route for the '/publish_subbasin' endpoint with GET method
+@app.route("/publish_subbasin", methods=["GET"])
+def publish_subbasin():
     db_path = "./scenario_2.db3"
     geoserver_url = "http://localhost:9090/geoserver"
     workspace = "ECCCGeoServer"
-    layer_name = "river_network"
+    layer_name = "subbasin"
     username = "admin"
     password = "geoserver"
 
-    river_network = read_river_network(hdf5_path, dataset_name)
-    vector_data = raster_to_vector(river_network)
+    # Load the shapefile
+    shapefile_path = "./upload/subbasin.shp"
+    gdf = gpd.read_file("./task/subbasin.shp")
+    gdf_pd = pd.DataFrame(gdf)
     runoff_data = fetch_runoff_data(db_path)
-    vector_with_runoff = add_runoff_to_vector(vector_data, runoff_data)
+    vector_with_runoff = add_runoff_to_vector(gdf_pd, runoff_data)
+    print(vector_with_runoff)
+
+    # Remove existing shapefile if it exists
+    if os.path.exists(shapefile_path):
+        os.remove(shapefile_path)
+        # Remove other related files (.shx, .dbf, etc.)
+        for ext in [".shx", ".dbf", ".prj", ".cpg"]:
+            auxiliary_file = shapefile_path.replace(".shp", ext)
+            if os.path.exists(auxiliary_file):
+                os.remove(auxiliary_file)
+
+    # Overwrite the original shapefile
+    vector_with_runoff.to_file("./upload/subbasin.shp")
 
     return publish_vector_data(
         geoserver_url,
