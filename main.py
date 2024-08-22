@@ -122,15 +122,14 @@ def fetch_runoff_data(db_path):
 # Function to add runoff data to vector data
 def add_runoff_to_vector(vector_data, runoff_data):
     # Merge the DataFrames on the specified columns with a left join
-    merged_data = pd.merge(vector_data, runoff_data, how="inner", left_on="Id", right_on="ID")
-    merged_data = pd.merge(vector_data, merged_data, how="outer")
+    merged_data = pd.merge(vector_data, runoff_data, how="left", left_on="Id", right_on="ID")
 
     # Drop the redundant columns (ID) from the merged data
     merged_data.drop(columns=["ID"], inplace=True)
 
     # Convert the merged DataFrame back to a GeoDataFrame
     merged_gdf = gpd.GeoDataFrame(merged_data)
-    merged_gdf.crs = "EPSG:4326"
+    merged_gdf.crs = "EPSG:26917"
 
     return merged_gdf
 
