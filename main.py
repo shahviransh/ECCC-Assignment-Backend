@@ -144,19 +144,23 @@ def publish_vector_data(
     username = "admin"
     password = "geoserver"
 
+    # Create an instance of the Geoserver class
     geo = Geoserver(geoserver_url, username, password)
 
     style_name = "transparent basin"
 
+    # Create a zip file of the shapefile to upload
     zip_path = "./upload"
     shutil.make_archive(zip_path, "zip", zip_path)
 
+    # Publish the vector data to GeoServer
     geo.create_shp_datastore(
         path=zip_path + ".zip",
         workspace=workspace,
         store_name=layer_name
     )
 
+    # Update the style of the published layer
     geo.publish_style(layer_name=layer_name, style_name=style_name, workspace=workspace)
 
     return jsonify({"message": "Vector data published successfully."})
