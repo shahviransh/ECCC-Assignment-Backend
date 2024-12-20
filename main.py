@@ -4,12 +4,11 @@ import sqlite3
 import pandas as pd
 from flask_cors import CORS
 # import h5py
-import numpy as np
-
+# import numpy as np
 # import rasterio
 # from rasterio.features import shapes
 # from shapely.geometry import shape as sh
-import geopandas as gpd
+# import geopandas as gpd
 # from geo.Geoserver import Geoserver
 import shutil
 import os
