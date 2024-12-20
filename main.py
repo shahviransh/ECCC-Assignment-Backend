@@ -12,7 +12,7 @@ import numpy as np
 # from shapely.geometry import shape as sh
 import geopandas as gpd
 import dbf
-from geo.Geoserver import Geoserver
+# from geo.Geoserver import Geoserver
 import shutil
 from dbfread import DBF
 import os
