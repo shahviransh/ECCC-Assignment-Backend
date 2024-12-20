@@ -2,19 +2,16 @@
 from flask import Flask, jsonify, request
 import sqlite3
 import pandas as pd
-import shapefile
 from flask_cors import CORS
-import h5py
+# import h5py
 import numpy as np
 
 # import rasterio
 # from rasterio.features import shapes
 # from shapely.geometry import shape as sh
 import geopandas as gpd
-import dbf
 # from geo.Geoserver import Geoserver
 import shutil
-from dbfread import DBF
 import os
 
 # Create an instance of the Flask class
